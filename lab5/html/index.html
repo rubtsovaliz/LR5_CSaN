@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Storage</title>
+    <style>
+        .status-info {
+            margin-top: 5px;
+            padding: 8px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            font-family: monospace;
+            display: none;
+        }
+
+        .status-success {
+            background: #e8f5e9;
+            border: 1px solid #a5d6a7;
+        }
+
+        .status-error {
+            background: #ffebee;
+            border: 1px solid #ef9a9a;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 20px auto;
+            max-width: 800px;
+            padding: 0 20px;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        h1, h2 {
+            font-weight: 500;
+            margin: 1.5em 0 0.5em;
+        }
+
+        .section {
+            margin: 2rem 0;
+            padding: 1.5rem 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        button, input[type="file"] {
+            padding: 8px 16px;
+            margin: 4px;
+            border: 1px solid #ddd;
+            background: white;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+
+            button:hover {
+                background: #f8f8f8;
+            }
+
+        .file-list {
+            list-style: none;
+            padding: 0;
+            margin: 1rem 0;
+        }
+
+        .file-item {
+            padding: 12px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #eee;
+        }
+
+        .file-info {
+            margin-top: 8px;
+            padding: 8px;
+            background: #f8f8f8;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+
+        .status-message {
+            margin: 1rem 0;
+            padding: 8px;
+            border-radius: 4px;
+            background: #e0f0ff;
+            color: #004085;
+        }
+    </style>
+</head>
+<body>
+    <h1>File Storage</h1>
+
+    <div class="section">
+        <h2>Upload File</h2>
+        <input type="file" id="fileInput">
+        <button onclick="uploadFile()">Upload</button>
+        <div id="uploadStatus" class="status-message"></div>
+    </div>
+
+    <div class="section">
+        <h2>Files</h2>
+        <button onclick="refreshFileList()">Refresh List</button>
+        <ul id="fileList" class="file-list"></ul>
+    </div>
+    <div class="section">
+        <h2>API Examples</h2>
+        <pre>
+# Upload file
+curl -X PUT -d "Hello World" http://localhost:5203/api/file/example.txt
+
+# Get file list
+curl http://localhost:5203/api/file
+
+# Download file
+curl http://localhost:5203/api/file/example.txt
+
+# Get file info
+curl -I http://localhost:5203/api/file/example.txt
+
+# Delete file
+curl -X DELETE http://localhost:5203/api/file/example.txt
+        </pre>
+    </div>
+    <script>
+        async function refreshFileList() {
+            try {
+                const response = await fetch('/api/file');
+                const files = await response.json();
+                const list = document.getElementById('fileList');
+
+                list.innerHTML = files.map(file => `
+                                <li>
+                                    <div class="file-item">
+                                        <span>${file}</span>
+                                        <div>
+                                            <button onclick="getFileInfo('${file}')">Head</button>
+                                            <button onclick="downloadFile('${file}')">Download</button>
+                                            <button onclick="deleteFile('${file}')">Delete</button>
+                                        </div>
+                                    </div>
+                                    <div id="info-${file}" class="file-info"></div>
+                                </li>
+                            `).join('');
+            } catch (error) {
+                showStatus('Error refreshing file list', 'status-error');
+            }
+        }
+
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                showStatus('Please select a file', 'status-error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/file/${file.name}`, {
+                    method: 'PUT',
+                    body: file
+                });
+
+                if (response.status === 201) {
+                    showStatus(`Status ${response.status} Created - File uploaded successfully`, 'status-success');
+                    refreshFileList();
+                }
+            } catch (error) {
+                showStatus('Error uploading file', 'status-error');
+            }
+        }
+
+        async function deleteFile(filename) {
+            try {
+                const response = await fetch(`/api/file/${encodeURIComponent(filename)}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.status === 204) {
+                    showStatus(`Status ${response.status} No Content - File deleted successfully`, 'status-success');
+                    refreshFileList();
+                } else if (response.status === 404) {
+                    showStatus(`Status ${response.status} Not Found - File not found`, 'status-error');
+                }
+            } catch (error) {
+                showStatus('Error deleting file', 'status-error');
+            }
+        }
+
+        async function getFileInfo(filename) {
+            try {
+                const response = await fetch(`/api/file/${encodeURIComponent(filename)}`, {
+                    method: 'HEAD'
+                });
+
+                const infoDiv = document.getElementById(`info-${filename}`);
+                let info = `Status: ${response.status} ${response.statusText}\n`;
+
+                info += `Last-Modified: ${response.headers.get('Last-Modified')}\n`;
+                info += `Content-Length: ${response.headers.get('Content-Length')} bytes`;
+
+                infoDiv.textContent = info;
+                infoDiv.style.display = 'block';
+
+            } catch (error) {
+                showStatus('Error getting file info', 'status-error');
+            }
+        }
+
+        function showStatus(message, className) {
+            const statusDiv = document.getElementById('uploadStatus');
+            statusDiv.textContent = message;
+            statusDiv.className = `status-info ${className}`;
+            statusDiv.style.display = 'block';
+
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 3000);
+        }
+
+        async function downloadFile(filename) {
+            try {
+                const response = await fetch(`/api/file/${encodeURIComponent(filename)}`);
+
+                if (response.status === 200) {
+                    // Создаем временную ссылку для скачивания
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+
+                    showStatus(`Status 200 OK - File downloaded successfully`, 'status-success');
+                } else if (response.status === 404) {
+                    showStatus(`Status 404 Not Found - File not found`, 'status-error');
+                } else {
+                    showStatus(`Status ${response.status} - Download failed`, 'status-error');
+                }
+            } catch (error) {
+                showStatus('Error downloading file', 'status-error');
+            }
+        }
+
+        window.onload = refreshFileList;
+    </script>
+</body>
+</html>
